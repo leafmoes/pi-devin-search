@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "id": "pi.devin-search",
+  "name": "Devin Search",
+  "version": "0.1.1",
+  "description": "Devin 搜索：云端联网检索 web_search + 云端规划/本地只读执行的代码检索 code_search。由 mimimaster/dsh-devin-search 的 pi-devin-search 扩展移植为 PI-Desktop 原生插件。",
+  "author": "local (port of mimimaster/dsh-devin-search, MIT)",
+  "license": "MIT",
+  "main": "main.js",
+  "ui": {
+    "panel": "renderer/index.html",
+    "title": "Devin Search",
+    "width": 520,
+    "height": 640
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "devin-search.open",
+        "title": "Devin Search: 打开面板",
+        "keywords": ["devin", "search", "login"]
+      },
+      {
+        "id": "devin-search.login",
+        "title": "Devin Search: 登录 Devin",
+        "keywords": ["devin", "login"]
+      },
+      {
+        "id": "devin-search.status",
+        "title": "Devin Search: 查看登录状态",
+        "keywords": ["devin", "status"]
+      },
+      {
+        "id": "devin-search.logout",
+        "title": "Devin Search: 退出登录",
+        "keywords": ["devin", "logout"]
+      }
+    ],
+    "agentTools": [
+      {
+        "name": "web_search",
+        "description": "只读的 Devin/Windsurf 联网搜索。查询与结果来自 Devin 云端，需要先登录。",
+        "risk": "high",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "maxLength": 8192, "description": "搜索查询。" },
+            "maxResults": { "type": "integer", "minimum": 1, "maximum": 10, "description": "返回的来源数量上限，1 到 10。" }
+          },
+          "required": ["query"],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "code_search",
+        "description": "云端规划 + 本地只读执行的代码检索：Devin 云端会接收检索查询与筛选出的相关代码片段，实际检索在工作区内只读、有界执行并跳过敏感/忽略路径。需要先登录。",
+        "risk": "high",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "search_term": { "type": "string", "maxLength": 8192, "description": "要查找的代码文本（字面匹配）。" },
+            "path": { "type": "string", "description": "可选的、工作区内的相对子目录，用于缩小检索范围。" }
+          },
+          "required": ["search_term"],
+          "additionalProperties": false
+        }
+      }
+    ],
+    "settings": [
+      {
+        "key": "webSearch",
+        "type": "boolean",
+        "default": true,
+        "title": "网页搜索 (web_search)"
+      },
+      {
+        "key": "codeSearch",
+        "type": "boolean",
+        "default": true,
+        "title": "代码搜索 (code_search)"
+      }
+    ]
+  },
+  "permissions": ["ui.panel", "agent.tool.register", "net.fetch", "fs.read", "shell.openExternal", "renderer.extension"],
+  "renderer": "renderer/ui.mjs",
+  "fs": {
+    "read": {
+      "root": "workspace",
+      "scope": ["**"]
+    }
+  },
+  "net": {
+    "domains": [
+      "api.devin.ai",
+      "app.devin.ai",
+      "server.codeium.com",
+      "server.self-serve.windsurf.com"
+    ]
+  },
+  "engines": {
+    "piDesktop": ">=0.1.0"
+  },
+  "activationEvents": [
+    "onStartup",
+    "onCommand:devin-search.open",
+    "onCommand:devin-search.status",
+    "onCommand:devin-search.logout"
+  ]
+}

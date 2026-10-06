@@ -1,0 +1,10 @@
+# Build output — install packages ship as GitHub release assets, not in the tree.
+dist/
+
+# Dependencies
+node_modules/
+
+# Local tooling / OS noise
+*.log
+.DS_Store
+Thumbs.db

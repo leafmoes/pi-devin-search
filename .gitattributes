@@ -1,0 +1,5 @@
+# The plugin is plain JS/Markdown; keep the checkout and the repository in LF.
+* text=auto eol=lf
+
+# Install packages are binary (store-only zip).
+*.piplug binary

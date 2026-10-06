@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Devin Search</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1b1b1f;
+        --muted: #6b7280;
+        --card: #f6f7f9;
+        --border: #e3e5e9;
+        --accent: #2f6fed;
+        --ok: #1a7f37;
+        --err: #b3261e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #17181b;
+          --fg: #e8e8ea;
+          --muted: #9aa0a6;
+          --card: #202124;
+          --border: #34363b;
+          --accent: #5b8cff;
+          --ok: #3fb950;
+          --err: #f85149;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.5 -apple-system, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+        padding: 16px 18px 24px;
+        overflow-y: auto;
+      }
+      h1 { font-size: 15px; margin: 0 0 2px; }
+      .sub { color: var(--muted); margin: 0 0 14px; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+      }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .row + .row { margin-top: 10px; }
+      .status { font-weight: 600; }
+      .status.ok { color: var(--ok); }
+      .status.off { color: var(--muted); }
+      .status.err { color: var(--err); }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 4px; word-break: break-word; }
+      button {
+        font: inherit;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+        border-radius: 8px;
+        padding: 7px 12px;
+        cursor: pointer;
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      input[type="text"] {
+        width: 100%;
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+      }
+      label.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+      .hidden { display: none; }
+      .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+      #toast { margin-top: 4px; min-height: 18px; font-size: 12px; }
+      a.repo { color: var(--accent); text-decoration: none; cursor: pointer; }
+      a.repo:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <h1>Devin Search</h1>
+    <p class="sub">Devin 联网检索 + 本地只读代码检索（由 <a id="repoLink" class="repo" href="https://github.com/mimimaster/dsh-devin-search" rel="noreferrer noopener">dsh-devin-search</a> 移植）。</p>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <div id="loginStatus" class="status off">正在读取状态…</div>
+          <div id="loginMeta" class="meta"></div>
+        </div>
+        <button id="logoutBtn" class="hidden">退出登录</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row"><strong>Devin 登录</strong></div>
+      <div id="loginIdle">
+        <div class="hint">将打开浏览器完成 Devin 授权，然后把你拿到的授权码粘贴回来。</div>
+        <div class="actions">
+          <button id="loginBtn" class="primary">开始登录</button>
+        </div>
+      </div>
+      <div id="loginPending" class="hidden">
+        <div class="hint">浏览器已打开授权页。完成登录后复制一次性授权码，粘贴到下面并提交。</div>
+        <div class="actions" style="flex-direction: column; align-items: stretch">
+          <input id="codeInput" type="text" placeholder="粘贴 Devin 授权码" autocomplete="off" spellcheck="false" />
+          <div class="actions">
+            <button id="submitCodeBtn" class="primary">提交授权码</button>
+            <button id="cancelLoginBtn">取消</button>
+            <button id="reopenBtn">重新打开授权页</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label class="switch"><input id="webToggle" type="checkbox" /> 网页搜索 (web_search)</label>
+      </div>
+      <div class="row">
+        <label class="switch"><input id="codeToggle" type="checkbox" /> 代码搜索 (code_search)</label>
+      </div>
+      <div class="hint">开关即时生效；网页搜索会把查询发送到 Devin 云端。</div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+      const bridge = window.pluginBridge;
+      const $ = (id) => document.getElementById(id);
+      const invoke = (channel, payload) => bridge.invoke(channel, payload);
+      let loginUrl = null;
+      const REPO_URL = "https://github.com/mimimaster/dsh-devin-search";
+
+      function toast(message, isError) {
+        const el = $("toast");
+        el.textContent = message || "";
+        el.style.color = isError ? "var(--err)" : "var(--ok)";
+      }
+
+      function render(state) {
+        const status = $("loginStatus");
+        const meta = $("loginMeta");
+        const logout = $("logoutBtn");
+        if (!state || !state.loggedIn) {
+          status.textContent = state && state.revoked ? "会话已被拒绝" : "未登录";
+          status.className = "status " + (state && state.revoked ? "err" : "off");
+          meta.textContent = "登录后 web_search 才可用。";
+          logout.classList.add("hidden");
+          return;
+        }
+        status.textContent = "已登录";
+        status.className = "status ok";
+        const when = state.expiresAt ? new Date(state.expiresAt).toLocaleString() : "未知";
+        meta.textContent = `到期：${when}（无自动刷新）`;
+        logout.classList.remove("hidden");
+      }
+
+      async function refresh() {
+        try {
+          const state = await invoke("devin-search.status");
+          render(state);
+          $("webToggle").checked = state.webSearch !== false;
+          $("codeToggle").checked = state.codeSearch !== false;
+        } catch (error) {
+          toast(String((error && error.message) || error), true);
+        }
+      }
+
+      async function beginLogin() {
+        const btn = $("loginBtn");
+        btn.disabled = true;
+        try {
+          const result = await invoke("devin-search.login.begin");
+          loginUrl = result && result.url ? result.url : null;
+          $("loginIdle").classList.add("hidden");
+          $("loginPending").classList.remove("hidden");
+          $("codeInput").focus();
+          toast("已打开授权页，请在浏览器完成登录。");
+        } catch (error) {
+          toast(String((error && error.message) || error), true);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function submitCode() {
+        const code = $("codeInput").value.trim();
+        if (!code) {
+          toast("请先粘贴授权码。", true);
+          return;
+        }
+        const btn = $("submitCodeBtn");
+        btn.disabled = true;
+        try {
+          await invoke("devin-search.login.submit", { code });
+          $("codeInput").value = "";
+          loginUrl = null;
+          $("loginPending").classList.add("hidden");
+          $("loginIdle").classList.remove("hidden");
+          await refresh();
+          toast("登录成功，凭据已保存。");
+        } catch (error) {
+          toast(String((error && error.message) || error), true);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function cancelLogin() {
+        try { await invoke("devin-search.login.cancel"); } catch (_) {}
+        loginUrl = null;
+        $("codeInput").value = "";
+        $("loginPending").classList.add("hidden");
+        $("loginIdle").classList.remove("hidden");
+        toast("已取消登录。");
+      }
+
+      async function logout() {
+        await invoke("devin-search.logout");
+        await refresh();
+        toast("已退出登录，本地凭据已清除。");
+      }
+
+      $("loginBtn").addEventListener("click", () => {
+        beginLogin().catch((error) => toast(String((error && error.message) || error), true));
+      });
+      $("submitCodeBtn").addEventListener("click", () => {
+        submitCode().catch((error) => toast(String((error && error.message) || error), true));
+      });
+      $("cancelLoginBtn").addEventListener("click", cancelLogin);
+      $("reopenBtn").addEventListener("click", () => {
+        if (loginUrl) bridge.invoke("shell.openExternal", { url: loginUrl });
+      });
+      $("logoutBtn").addEventListener("click", () => {
+        logout().catch((error) => toast(String((error && error.message) || error), true));
+      });
+      $("webToggle").addEventListener("change", async (event) => {
+        await invoke("devin-search.settings.set", { webSearch: event.target.checked });
+        toast("设置已更新。");
+      });
+      $("codeToggle").addEventListener("change", async (event) => {
+        await invoke("devin-search.settings.set", { codeSearch: event.target.checked });
+        toast("设置已更新。");
+      });
+
+      const repoLink = $("repoLink");
+      if (repoLink) {
+        repoLink.addEventListener("click", (event) => {
+          if (!bridge || typeof bridge.invoke !== "function") return; // no bridge: let the anchor behave normally
+          event.preventDefault();
+          bridge.invoke("shell.openExternal", { url: REPO_URL }).catch(() => toast("无法打开外部浏览器。", true));
+        });
+      }
+
+      refresh();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+Devin Search (PI-Desktop plugin)
+=================================
+
+This plugin is a port of the `pi-devin-search` extension from
+https://github.com/mimimaster/dsh-devin-search (MIT License).
+
+Portions of the OAuth (PKCE), web search and read-only local code-search
+protocol logic are adapted from that project, which in turn credits
+"piwin" (https://github.com/mimimaster/piwin, MIT) for the original
+Windsurf/Codeium protocol implementation.
+
+Upstream copyright and MIT license terms are preserved. See the upstream
+repository for the full license text and NOTICE.
